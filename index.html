@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinAnalyzer - Financial Analysis & Investment Tracking</title>
+  <meta name="description" content="Intelligent single-page financial analysis dashboard and portfolio tracking system with client-side CSV parsing, 3D interactive graphics, charts, and Light/Dark modes.">
+  <meta name="author" content="Paarth Giroti">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#1e1b4b',
+            },
+            slate: {
+              850: '#0f172a',
+              950: '#070a13'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- External Libraries -->
+  <!-- FontAwesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Three.js (For 3D interactive canvas animation across the whole site) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- PapaParse -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="min-h-screen relative flex flex-col selection:bg-indigo-500 selection:text-white">
+
+  <!-- Full-Screen Interactive 3D WebGL Canvas Scene across Whole Website -->
+  <canvas id="threeCanvas"></canvas>
+
+  <!-- Ambient Background Glows -->
+  <div class="ambient-glow-1"></div>
+  <div class="ambient-glow-2"></div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Top Navigation Header -->
+  <header class="sticky top-0 z-40 glass-header px-4 sm:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+        <i class="fa-solid fa-chart-line text-white text-lg"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-xl font-extrabold tracking-tight font-heading bg-gradient-to-r from-indigo-500 via-indigo-400 to-emerald-400 dark:from-white dark:via-slate-100 dark:to-indigo-300 bg-clip-text text-transparent">FinAnalyzer</span>
+          <span class="px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border border-indigo-500/20">Pro 3D</span>
+        </div>
+        <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">Financial Intelligence & Portfolio Tracking</p>
+      </div>
+    </div>
+
+    <!-- Header Actions -->
+    <div class="flex items-center flex-wrap gap-2.5">
+      <!-- Light / Dark Mode Toggle Button -->
+      <button id="themeToggleBtn" class="glass-btn px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 shadow-sm transition-all" title="Toggle Light / Dark Mode">
+        <i id="themeToggleIcon" class="fa-solid fa-moon text-indigo-400 text-sm"></i>
+        <span id="themeToggleLabel">Dark</span>
+      </button>
+
+      <!-- Currency Badge: Strict INR Standard -->
+      <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900/80 border border-slate-300 dark:border-slate-700/60 text-xs font-semibold text-emerald-600 dark:text-emerald-400 shadow-sm" title="Currency Standard: Indian Rupees (en-IN)">
+        <i class="fa-solid fa-indian-rupee-sign text-[11px]"></i>
+        <span>INR (₹) Standard</span>
+      </div>
+
+      <!-- Upload New File (Report View Back Button) -->
+      <button id="headerBackToUploadBtn" class="hidden glass-btn px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all">
+        <i class="fa-solid fa-arrow-left text-indigo-400"></i>
+        <span>Upload New File</span>
+      </button>
+
+      <!-- Sample CSV Download Button -->
+      <button id="downloadSampleCsvBtn" class="glass-btn px-3.5 py-2 rounded-xl text-xs font-medium flex items-center gap-2" title="Download sample CSV template">
+        <i class="fa-solid fa-file-csv text-emerald-500 dark:text-emerald-400"></i>
+        <span>Sample CSV</span>
+      </button>
+
+      <!-- Reset Dashboard Button (Visible in report view) -->
+      <button id="headerResetBtn" title="Reset Dashboard" class="hidden glass-btn p-2 rounded-xl text-xs text-slate-400 hover:text-rose-400">
+        <i class="fa-solid fa-arrow-rotate-left"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Application Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 z-10 flex flex-col gap-8">
+
+    <!-- ========================================================================= -->
+    <!-- 1. INITIAL LANDING PAGE STATE (Upload vs Demo) WITH 3D ANIMATION          -->
+    <!-- Displayed on page load; NO report data or demo data loaded initially     -->
+    <!-- ========================================================================= -->
+    <section id="landingScreen" class="w-full flex flex-col items-center gap-8 py-4 sm:py-6 transition-opacity duration-300 relative">
+      
+      <!-- 3D Interactive Hero Card -->
+      <div class="w-full relative rounded-3xl overflow-hidden glass-panel p-6 sm:p-10 border border-indigo-500/25 shadow-2xl card-3d">
+        
+        <!-- Floating 3D Element Badges (Animated) -->
+        <div class="absolute top-6 left-6 hidden lg:flex items-center gap-2.5 px-4 py-2 rounded-2xl glass-panel border border-amber-500/30 text-amber-500 dark:text-amber-300 text-xs font-bold animate-float-slow shadow-xl z-10 pointer-events-none">
+          <div class="w-7 h-7 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-500 dark:text-amber-400 text-sm">
+            <i class="fa-solid fa-coins"></i>
+          </div>
+          <span>3D Asset & Cash Flow Intelligence</span>
+        </div>
+
+        <div class="absolute top-6 right-6 hidden lg:flex items-center gap-2.5 px-4 py-2 rounded-2xl glass-panel border border-emerald-500/30 text-emerald-600 dark:text-emerald-300 text-xs font-bold animate-float-reverse shadow-xl z-10 pointer-events-none">
+          <div class="w-7 h-7 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-500 dark:text-emerald-400 text-sm">
+            <i class="fa-solid fa-arrow-trend-up"></i>
+          </div>
+          <span>+32.9% Annual Portfolio ROI</span>
+        </div>
+
+        <!-- Center Hero Text Content -->
+        <div class="text-center max-w-3xl mx-auto relative z-10 py-4 sm:py-8">
+          <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-xs font-semibold mb-4 shadow-inner">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 dark:bg-emerald-400 pulse-indicator"></span>
+            <span>Client-Side Analysis • 100% Private • Indian Rupee (₹) Standard</span>
+          </div>
+
+          <h1 class="text-3xl sm:text-5xl md:text-6xl font-black text-slate-900 dark:text-white font-heading tracking-tight leading-tight">
+            Analyze Cash Flows, Track ROI, & <span class="bg-gradient-to-r from-indigo-500 via-indigo-400 to-emerald-400 dark:from-indigo-300 dark:via-emerald-300 dark:to-indigo-200 bg-clip-text text-transparent">Unlock Clarity</span>
+          </h1>
+
+          <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300 mt-4 max-w-2xl mx-auto leading-relaxed font-normal">
+            Next-generation financial audit platform. Drop your bank or broker CSV file or load our curated INR dataset to visualize spending, calculate investment yields, and unlock automated financial strategies.
+          </p>
+
+          <div class="mt-4 flex items-center justify-center gap-2 text-xs text-indigo-500 dark:text-indigo-300/80 font-medium">
+            <i class="fa-solid fa-cube text-indigo-400 animate-spin" style="animation-duration: 8s;"></i>
+            <span>Interactive 3D space: Move your cursor anywhere to tilt the perspective</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- TWO CLEAR OPTIONS WITH 3D PERSPECTIVE TILT -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-5xl mx-auto">
+        
+        <!-- OPTION A: File Dropzone (Upload Custom CSV) with 3D Card Tilt -->
+        <div class="card-3d glass-panel rounded-3xl p-6 sm:p-8 flex flex-col justify-between border-t-4 border-t-indigo-500 relative group cursor-pointer" id="dropzoneCard">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-xs uppercase font-extrabold tracking-wider px-3 py-1 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30">
+                Option 1 • Custom CSV
+              </span>
+              <span class="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5">
+                <i class="fa-solid fa-lock text-[11px]"></i> 100% Local
+              </span>
+            </div>
+            
+            <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white font-heading mb-2">Upload Transaction CSV</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-5">
+              Select or drag-and-drop your custom CSV export. FinAnalyzer will process ONLY this file and switch instantly to your personalized report dashboard.
+            </p>
+
+            <!-- Interactive Drop Area -->
+            <input type="file" id="csvFileInput" accept=".csv" class="hidden">
+            <div id="dropzone" class="dropzone rounded-2xl p-6 text-center flex flex-col items-center justify-center gap-3">
+              <div class="w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-500 dark:text-indigo-400 text-3xl group-hover:scale-110 transition-transform shadow-lg shadow-indigo-500/20">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+              </div>
+              <div>
+                <p class="text-sm font-bold text-slate-900 dark:text-white">Click to Browse or Drag CSV Here</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Supports monthly & annual banking / broker exports</p>
+              </div>
+              <div class="mt-2">
+                <span class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 inline-flex items-center gap-2 transition-all">
+                  <i class="fa-solid fa-folder-open text-xs"></i> Select CSV File
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Format Guidance -->
+          <div class="mt-5 pt-4 border-t border-slate-200 dark:border-slate-800/80">
+            <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Supported Columns:</div>
+            <div class="flex flex-wrap gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+              <span class="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 font-mono">Date</span>
+              <span class="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 font-mono">Description</span>
+              <span class="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 font-mono">Amount (₹)</span>
+              <span class="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 font-mono">Category</span>
+              <span class="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 font-mono">Type</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- OPTION B: Load Demo Data Button & Card with 3D Card Tilt -->
+        <div class="card-3d glass-panel rounded-3xl p-6 sm:p-8 flex flex-col justify-between border-t-4 border-t-emerald-500 relative group" id="demoDataCard">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-xs uppercase font-extrabold tracking-wider px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30">
+                Option 2 • Instant Preview
+              </span>
+              <span class="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1.5">
+                <i class="fa-solid fa-bolt text-[11px]"></i> Curated INR Data
+              </span>
+            </div>
+
+            <h2 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white font-heading mb-2">Explore With Demo Data</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-5">
+              Experience the entire dashboard without uploading. Loads 36 multi-month financial records featuring salary, housing, SIPs, Mutual Funds, Stocks, Real Estate, and Fixed Deposits in INR (₹).
+            </p>
+
+            <!-- Highlights Checklist -->
+            <div class="space-y-2.5 mb-6 bg-slate-100 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-800/60 text-xs text-slate-700 dark:text-slate-300">
+              <div class="flex items-center gap-2.5">
+                <i class="fa-solid fa-circle-check text-emerald-500 dark:text-emerald-400 text-sm"></i>
+                <span>Multi-asset portfolio: Stocks, Mutual Funds, REIT, FD & Gold</span>
+              </div>
+              <div class="flex items-center gap-2.5">
+                <i class="fa-solid fa-circle-check text-emerald-500 dark:text-emerald-400 text-sm"></i>
+                <span>INR (₹) formatted cash flow and savings rate analytics</span>
+              </div>
+              <div class="flex items-center gap-2.5">
+                <i class="fa-solid fa-circle-check text-emerald-500 dark:text-emerald-400 text-sm"></i>
+                <span>Automated financial strategy tips & 3D visual analytics</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex flex-col gap-2.5 mt-auto">
+            <button type="button" id="landingDemoBtn" class="glass-btn-emerald w-full py-3.5 px-6 rounded-xl font-extrabold text-sm text-white flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-600/30 hover:scale-[1.01] transition-transform">
+              <i class="fa-solid fa-bolt text-amber-300 text-base"></i>
+              <span>Load Demo Data</span>
+            </button>
+            <button type="button" id="landingSampleCsvBtn" class="glass-btn w-full py-2.5 px-4 rounded-xl font-medium text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex items-center justify-center gap-2">
+              <i class="fa-solid fa-download text-emerald-500 dark:text-emerald-400"></i>
+              <span>Download Sample CSV Template</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Feature Badges Grid with 3D tilt -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-5xl mx-auto pt-2">
+        <div class="card-3d glass-panel p-4 rounded-2xl flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 flex items-center justify-center text-lg border border-indigo-500/20">
+            <i class="fa-solid fa-indian-rupee-sign"></i>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-slate-900 dark:text-white">INR Currency Format</div>
+            <div class="text-[11px] text-slate-500 dark:text-slate-400">Formatted with Indian grouping (₹1,50,000)</div>
+          </div>
+        </div>
+        <div class="card-3d glass-panel p-4 rounded-2xl flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 flex items-center justify-center text-lg border border-emerald-500/20">
+            <i class="fa-solid fa-chart-pie"></i>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-slate-900 dark:text-white">Multi-Asset ROI Yields</div>
+            <div class="text-[11px] text-slate-500 dark:text-slate-400">Capital vs return comparisons across sources</div>
+          </div>
+        </div>
+        <div class="card-3d glass-panel p-4 rounded-2xl flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-500 dark:text-cyan-400 flex items-center justify-center text-lg border border-cyan-500/20">
+            <i class="fa-solid fa-cubes"></i>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-slate-900 dark:text-white">3D Dynamic Visuals</div>
+            <div class="text-[11px] text-slate-500 dark:text-slate-400">Interactive 3D cards & perspective tilt</div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- 2. REPORT DASHBOARD VIEW                                                 -->
+    <!-- Populated and displayed ONLY after file upload or demo data button click  -->
+    <!-- ========================================================================= -->
+    <div id="dashboardSection" class="hidden flex flex-col gap-8 w-full transition-opacity duration-300">
+
+      <!-- Dashboard Top Navigation Bar -->
+      <div class="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 card-3d">
+        <div class="flex items-center gap-3">
+          <button id="dashboardBackBtn" class="glass-btn px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 group transition-all" title="Return to initial upload screen">
+            <i class="fa-solid fa-arrow-left text-indigo-400 group-hover:-translate-x-1 transition-transform"></i>
+            <span>Upload New File</span>
+          </button>
+          
+          <div class="h-4 w-px bg-slate-300 dark:bg-slate-800 hidden sm:block"></div>
+          
+          <!-- Active Data Source Status -->
+          <div class="flex items-center gap-2 text-xs">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-slate-500 dark:text-slate-400">Active Source:</span>
+            <span id="activeDatasetLabel" class="font-bold text-slate-900 dark:text-white">Demo Dataset</span>
+            <span id="activeRecordCount" class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500 dark:text-indigo-300 border border-indigo-500/20">36 records</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2.5">
+          <button id="dashboardResetBtn" class="glass-btn px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-rose-400 flex items-center gap-1.5" title="Reset and return to landing screen">
+            <i class="fa-solid fa-arrow-rotate-left"></i>
+            <span>Reset</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- SECTION 1: FINANCIAL REPORT & SUMMARY METRICS WITH 3D CARD TILT -->
+      <section>
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-wallet text-indigo-500 dark:text-indigo-400"></i>
+            <h2 class="text-lg font-bold text-slate-900 dark:text-white font-heading">Financial Summary & Core Metrics</h2>
+          </div>
+          <span class="text-xs text-slate-500 dark:text-slate-400 font-medium">Real-time parsed aggregates in INR (₹)</span>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Card 1: Total Income -->
+          <div class="card-3d glass-panel rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden border-t-4 border-t-emerald-500">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Income</span>
+              <div class="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 flex items-center justify-center text-sm border border-emerald-500/20">
+                <i class="fa-solid fa-arrow-trend-up"></i>
+              </div>
+            </div>
+            <div>
+              <div id="metricTotalIncome" class="text-2xl font-extrabold text-slate-900 dark:text-white font-mono tracking-tight">₹0.00</div>
+              <div class="flex items-center gap-1.5 mt-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                <i class="fa-solid fa-circle-check text-[10px]"></i>
+                <span>Active & Passive Inflows</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: Total Expenses -->
+          <div class="card-3d glass-panel rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden border-t-4 border-t-rose-500">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Expenses</span>
+              <div class="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-500 dark:text-rose-400 flex items-center justify-center text-sm border border-rose-500/20">
+                <i class="fa-solid fa-arrow-trend-down"></i>
+              </div>
+            </div>
+            <div>
+              <div id="metricTotalExpenses" class="text-2xl font-extrabold text-slate-900 dark:text-white font-mono tracking-tight">₹0.00</div>
+              <div class="flex items-center gap-1.5 mt-2 text-xs text-rose-500 dark:text-rose-400 font-medium">
+                <i class="fa-solid fa-receipt text-[10px]"></i>
+                <span>Living Costs & Outlays</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Total Investments & ROI -->
+          <div class="card-3d glass-panel rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden border-t-4 border-t-indigo-500">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Investments</span>
+              <div class="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 flex items-center justify-center text-sm border border-indigo-500/20">
+                <i class="fa-solid fa-layer-group"></i>
+              </div>
+            </div>
+            <div>
+              <div id="metricTotalInvestments" class="text-2xl font-extrabold text-slate-900 dark:text-white font-mono tracking-tight">₹0.00</div>
+              <div class="mt-2">
+                <span id="metricRoiBadge" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  +0.0% ROI (₹0.00)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Net Cash Flow -->
+          <div class="card-3d glass-panel rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden border-t-4 border-t-amber-500">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Net Cash Flow</span>
+              <div class="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 dark:text-amber-400 flex items-center justify-center text-sm border border-amber-500/20">
+                <i class="fa-solid fa-coins"></i>
+              </div>
+            </div>
+            <div>
+              <div id="metricNetCashFlow" class="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono tracking-tight">₹0.00</div>
+              <div class="flex items-center justify-between mt-2">
+                <span id="metricSavingsRateBadge" class="text-xs font-semibold text-indigo-500 dark:text-indigo-300">0.0% Savings Rate</span>
+                <span class="text-[10px] text-slate-400 font-mono">(Inc - Exp - Inv)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 2: INSIGHTS & ANALYTICS CALLOUTS WITH 3D TILT -->
+      <section>
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-magnifying-glass-chart text-emerald-500 dark:text-emerald-400"></i>
+            <h2 class="text-lg font-bold text-slate-900 dark:text-white font-heading">Key Insights & Outlier Analytics</h2>
+          </div>
+          <span class="text-xs text-slate-500 dark:text-slate-400">Automated spending & asset yield classification</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Insight 1: Most Expense Category -->
+          <div class="card-3d glass-panel rounded-2xl p-5 border-l-4 border-l-rose-500">
+            <div class="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+              <span>Most Expense Category</span>
+              <i class="fa-solid fa-fire text-rose-500 dark:text-rose-400"></i>
+            </div>
+            <div id="insightMostExpenseName" class="text-lg font-extrabold text-slate-900 dark:text-white truncate">Housing</div>
+            <div id="insightMostExpenseAmount" class="text-base font-bold text-rose-500 dark:text-rose-400 font-mono mt-1">₹0.00</div>
+            <p id="insightMostExpensePct" class="text-xs text-slate-500 dark:text-slate-400 mt-1">0% of total expenses</p>
+          </div>
+
+          <!-- Insight 2: Least Expense Category -->
+          <div class="card-3d glass-panel rounded-2xl p-5 border-l-4 border-l-emerald-500">
+            <div class="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+              <span>Least Expense Category</span>
+              <i class="fa-solid fa-feather text-emerald-500 dark:text-emerald-400"></i>
+            </div>
+            <div id="insightLeastExpenseName" class="text-lg font-extrabold text-slate-900 dark:text-white truncate">Entertainment</div>
+            <div id="insightLeastExpenseAmount" class="text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono mt-1">₹0.00</div>
+            <p id="insightLeastExpensePct" class="text-xs text-slate-500 dark:text-slate-400 mt-1">0% of total expenses</p>
+          </div>
+
+          <!-- Insight 3: Top Yielding Investment Asset -->
+          <div class="card-3d glass-panel rounded-2xl p-5 border-l-4 border-l-indigo-500">
+            <div class="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+              <span>Top Yield Performer</span>
+              <i class="fa-solid fa-trophy text-amber-500 dark:text-amber-400"></i>
+            </div>
+            <div id="insightTopYieldName" class="text-lg font-extrabold text-slate-900 dark:text-white truncate">Stocks</div>
+            <div id="insightTopYieldRate" class="text-base font-bold text-amber-500 dark:text-amber-400 font-mono mt-1">+0% Yield</div>
+            <p id="insightTopYieldValues" class="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">Invested vs Returns</p>
+          </div>
+
+          <!-- Insight 4: Financial Health Score -->
+          <div class="card-3d glass-panel rounded-2xl p-5 border-l-4 border-l-cyan-500 flex flex-col justify-between">
+            <div class="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+              <span>Financial Health Index</span>
+              <i class="fa-solid fa-heart-pulse text-cyan-500 dark:text-cyan-400"></i>
+            </div>
+            <div class="flex items-baseline gap-2">
+              <span id="metricHealthScore" class="text-2xl font-extrabold text-slate-900 dark:text-white font-mono">85/100</span>
+              <span id="metricHealthLabel" class="text-xs font-semibold uppercase text-emerald-600 dark:text-emerald-400 tracking-wider">Balanced</span>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Computed from savings buffer & ROI velocity</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 3: DATA VISUALIZATIONS & CHARTS WITH 3D TILT -->
+      <section>
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-chart-simple text-indigo-500 dark:text-indigo-400"></i>
+            <h2 class="text-lg font-bold text-slate-900 dark:text-white font-heading">Visual Analytics & Asset Allocations</h2>
+          </div>
+          <span class="text-xs text-slate-500 dark:text-slate-400">Interactive visual charts in INR (₹)</span>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Chart 1: Doughnut Chart (Income vs Expense vs Investments) -->
+          <div class="card-3d glass-panel rounded-2xl p-5 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white">Income vs Expense vs Investments Breakdown</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Direct proportion of inflows, outlays, and invested capital</p>
+              </div>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/5 text-slate-700 dark:text-slate-300">Doughnut</span>
+            </div>
+            <div class="chart-wrapper">
+              <canvas id="incomeExpenseChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Chart 2: Category-wise Expense Bar Chart -->
+          <div class="card-3d glass-panel rounded-2xl p-5 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white">Top Expense Outlays by Category</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Ranked from highest spend to lowest in INR (₹)</p>
+              </div>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/5 text-slate-700 dark:text-slate-300">Horizontal Bar</span>
+            </div>
+            <div class="chart-wrapper">
+              <canvas id="expenseCategoryChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Chart 3: Grouped Bar Chart: Investment Amount vs Return Comparison by source -->
+          <div class="card-3d glass-panel rounded-2xl p-5 lg:col-span-2 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white">Investment Capital vs Return Comparison by Source</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Comparative yield performance across Mutual Funds, Stocks, Real Estate, FD & Gold</p>
+              </div>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20">Grouped Bar</span>
+            </div>
+            <div class="chart-wrapper" style="height: 330px;">
+              <canvas id="investmentComparisonChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 4: STRATEGY & SAVINGS TIPS ENGINE -->
+      <section>
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-wand-magic-sparkles text-amber-500 dark:text-amber-400"></i>
+            <h2 class="text-lg font-bold text-slate-900 dark:text-white font-heading">Automated Financial Strategy & Savings Engine</h2>
+          </div>
+          <span class="text-xs text-slate-500 dark:text-slate-400">Rule-based portfolio & budget recommendations</span>
+        </div>
+
+        <div id="strategyTipsContainer" class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <!-- Dynamically populated: Savings Target, Expense Cutback, Investment Allocation -->
+        </div>
+      </section>
+
+      <!-- SECTION 5: INTERACTIVE TRANSACTION EXPLORER -->
+      <section class="card-3d glass-panel rounded-2xl p-5 overflow-hidden">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Transaction Records Ledger</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Search, filter, and inspect verified data rows</p>
+          </div>
+
+          <!-- Filters -->
+          <div class="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <!-- Search -->
+            <div class="relative flex-1 sm:w-48">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-400"></i>
+              <input type="text" id="tableSearchInput" placeholder="Search..." class="w-full text-xs border rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+            </div>
+
+            <!-- Type Filter -->
+            <select id="typeFilter" class="text-xs border rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer">
+              <option value="all">All Types</option>
+              <option value="Income">Income</option>
+              <option value="Expense">Expense</option>
+              <option value="Investment">Investment</option>
+              <option value="Investment Return">Investment Return</option>
+            </select>
+
+            <!-- Category Filter -->
+            <select id="categoryFilter" class="text-xs border rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer">
+              <option value="all">All Categories</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold uppercase tracking-wider cursor-pointer">
+                <th class="py-3 px-4 hover:text-indigo-500" data-sort="date">Date <i class="fa-solid fa-sort ml-1 text-[10px]"></i></th>
+                <th class="py-3 px-4 hover:text-indigo-500" data-sort="description">Description <i class="fa-solid fa-sort ml-1 text-[10px]"></i></th>
+                <th class="py-3 px-4 hover:text-indigo-500" data-sort="category">Category <i class="fa-solid fa-sort ml-1 text-[10px]"></i></th>
+                <th class="py-3 px-4 hover:text-indigo-500" data-sort="type">Type <i class="fa-solid fa-sort ml-1 text-[10px]"></i></th>
+                <th class="py-3 px-4 text-right hover:text-indigo-500" data-sort="amount">Amount (₹) <i class="fa-solid fa-sort ml-1 text-[10px]"></i></th>
+              </tr>
+            </thead>
+            <tbody id="transactionsTableBody">
+              <!-- Populated by JavaScript -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div class="flex items-center justify-between pt-4 mt-2 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
+          <span id="tablePaginationInfo">Showing 0 to 0 of 0 records</span>
+          <div class="flex items-center gap-2">
+            <button id="prevPageBtn" class="glass-btn px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
+              <i class="fa-solid fa-chevron-left mr-1"></i> Prev
+            </button>
+            <button id="nextPageBtn" class="glass-btn px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
+              Next <i class="fa-solid fa-chevron-right ml-1"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================================= -->
+      <!-- 4. BRANDING: MADE BY PAARTH GIROTI WITH USER ATTACHED PHOTO               -->
+      <!-- No taglines below, custom ratio portrait photo of Paarth Giroti           -->
+      <!-- ========================================================================= -->
+      <section class="card-3d glass-panel rounded-3xl p-6 sm:p-8 border border-indigo-500/30 shadow-2xl relative overflow-hidden">
+        <div class="absolute -right-8 -bottom-8 w-48 h-48 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="flex flex-col sm:flex-row items-center justify-start gap-6 relative z-10">
+          
+          <!-- Attached Picture of Paarth Giroti with adjusted portrait aspect ratio -->
+          <div class="relative shrink-0">
+            <img 
+              src="./paarth_giroti.jpg" 
+              alt="Paarth Giroti" 
+              class="w-20 h-24 sm:w-24 sm:h-28 object-cover object-top rounded-2xl border-2 border-indigo-400/60 shadow-2xl shadow-indigo-500/30 ring-4 ring-indigo-500/10 hover:scale-105 transition-all duration-300"
+            />
+            <span class="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 flex items-center justify-center text-white text-[11px] shadow-md" title="Verified Creator">
+              <i class="fa-solid fa-check"></i>
+            </span>
+          </div>
+
+          <!-- Clean Title without any taglines below -->
+          <div class="text-center sm:text-left">
+            <h3 class="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white font-heading tracking-tight leading-none">
+              Made by <span class="bg-gradient-to-r from-indigo-500 via-indigo-400 to-emerald-400 dark:from-indigo-300 dark:via-emerald-300 dark:to-indigo-200 bg-clip-text text-transparent">Paarth Giroti</span>
+            </h3>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- Website Bottom Bar (Clean without taglines below) -->
+  <footer class="mt-auto border-t border-slate-200 dark:border-slate-800/80 glass-header py-6 px-4 text-center z-10">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+      <div class="flex items-center gap-2">
+        <div class="w-5 h-5 rounded bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold">F</div>
+        <span class="font-bold text-slate-900 dark:text-slate-200">FinAnalyzer</span>
+        <span>© 2026</span>
+      </div>
+
+      <div class="text-base font-extrabold tracking-wide bg-gradient-to-r from-indigo-500 via-indigo-400 to-emerald-400 dark:from-indigo-400 dark:via-emerald-300 dark:to-indigo-400 bg-clip-text text-transparent">
+        Made by Paarth Giroti
+      </div>
+    </div>
+  </footer>
+
+  <!-- Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
